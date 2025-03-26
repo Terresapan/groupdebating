@@ -1,0 +1,13 @@
+streamlit
+git+https://github.com/streamlit/gsheets-connection
+gspread
+oauth2client
+langchain
+langgraph
+langsmith
+langchain_openai
+langchain-google-genai
+langchain-community
+langchain_pinecone
+
+
