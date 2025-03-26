@@ -48,6 +48,7 @@ class DebateState(TypedDict):
     current_speaker_idx: int
     user_questions: List[Dict[str, str]]  # To store user follow-up questions and responses
     knowledge_context: Dict[str, List[Dict]]  # To store retrieved knowledge for each debater
+    sources: Dict[str, Dict[int, List[Dict[str, str]]]]  # To store sources for each debater by round
 
 # Initialize Google Gemini API
 def get_llm(api_key, model=GEMINI_2_0_FLASH, temperature=0):
@@ -116,6 +117,24 @@ def create_debater_node(debater_name):
 
         # Get the knowledge context for this debater
         knowledge = state['knowledge_context'].get(debater_name, [])
+        
+        # Track sources for this round
+        if 'sources' not in state:
+            state['sources'] = {}
+        if debater_name not in state['sources']:
+            state['sources'][debater_name] = {}
+        
+        # Store sources for the current round
+        current_round_sources = []
+        for item in knowledge:
+            if 'source' in item:
+                current_round_sources.append({
+                    'content': item['content'],
+                    'source': item['source']
+                })
+        
+        # Add sources to the state
+        state['sources'][debater_name][state['current_round']] = current_round_sources
 
         # Format knowledge context
         knowledge_context = ""
@@ -246,8 +265,13 @@ def generate_debate(topic, debaters, num_rounds):
         'history': [{}],
         'current_speaker_idx': 0,
         'user_questions': [],
-        'knowledge_context': {}
+        'knowledge_context': {},
+        'sources': {}
     }
+    
+    # Initialize sources dictionary for each debater
+    for debater in debaters:
+        initial_state['sources'][debater] = {}
 
     # Pre-fetch knowledge for all debaters
     for debater in debaters:
@@ -280,6 +304,15 @@ def handle_follow_up_question(state, question, responder_names):
 
         # Combine existing knowledge with question-specific knowledge
         all_knowledge = knowledge + question_knowledge
+        
+        # Track sources for this follow-up question
+        question_sources = []
+        for item in all_knowledge:
+            if 'source' in item:
+                question_sources.append({
+                    'content': item['content'],
+                    'source': item['source']
+                })
 
         # Format knowledge context
         knowledge_context = ""
@@ -329,7 +362,8 @@ def handle_follow_up_question(state, question, responder_names):
         # Add this response to the question entry
         question_entry['responses'].append({
             'responder': responder_name,
-            'response': response_text
+            'response': response_text,
+            'sources': question_sources
         })
 
     # Add the complete question and responses to the state

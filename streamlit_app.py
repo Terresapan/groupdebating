@@ -80,15 +80,23 @@ if user_query:
                 answer = response["answer"]
                 sources = response["sources"].strip()
 
+                # Display the answer
+                st.markdown(answer)
+
+                # Display sources in a more structured way
                 if sources:
-                    formatted_response = f"{answer}
+                    with st.expander("View Sources"):
+                        source_list = sources.split(", ")
+                        for i, source in enumerate(source_list):
+                            st.markdown(f"**Source {i+1}:** {source}")
 
-**Sources:**
-{sources}"
-                else:
-                    formatted_response = answer
+                            # Find the corresponding document
+                            for doc in similar_docs:
+                                if doc.metadata.get('source', 'Unknown') == source:
+                                    st.markdown(f"**Content:** {doc.page_content}")
+                                    st.markdown("---")
+                                    break
 
-                st.markdown(formatted_response)
 
                 # Add assistant message to chat history
                 st.session_state.messages.append({"role": "assistant", "content": formatted_response})

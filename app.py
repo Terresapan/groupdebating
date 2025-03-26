@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import time
 from back_end import DEBATERS, generate_debate, handle_follow_up_question
-from main import GroupDebateQA
 
 # Set page configuration (must be the first Streamlit command)
 st.set_page_config(
@@ -50,6 +49,18 @@ st.markdown("""
     .main-title {
         text-align: center;
         margin-bottom: 30px;
+    }
+    .source-expander {
+        background-color: #f0f0f0;
+        border-radius: 5px;
+        padding: 10px;
+        margin-top: 5px;
+        margin-bottom: 10px;
+        border-left: 3px solid #9C27B0;
+    }
+    .source-content {
+        font-size: 0.9em;
+        color: #555;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -115,7 +126,7 @@ if st.session_state.process_follow_up:
         # Get the question and responders from session state
         question = st.session_state.follow_up_question
         responders = st.session_state.selected_responders
-        
+
         if question and responders:
             # Update the debate state with the user's question and the responses
             st.session_state.debate_state = handle_follow_up_question(
@@ -123,11 +134,11 @@ if st.session_state.process_follow_up:
                 question,
                 responders
             )
-            
+
             # Clear the inputs after processing
             st.session_state.follow_up_question = ""
             st.session_state.selected_responders = []
-        
+
         # Reset the processing flag
         st.session_state.process_follow_up = False
 
@@ -145,16 +156,16 @@ if st.button(button_text, type="primary", disabled=len(selected_debaters) < 2 or
         # Show a progress bar for better UX
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         try:
             status_text.text("Initializing debate...")
             progress_bar.progress(10)
             time.sleep(0.5)
-            
+
             # Initialize QA engine for knowledge retrieval
             status_text.text("Retrieving knowledge from database...")
             progress_bar.progress(30)
-            
+
             # Create and run the real debate
             status_text.text("Generating debate content...")
             final_state = generate_debate(
@@ -162,23 +173,23 @@ if st.button(button_text, type="primary", disabled=len(selected_debaters) < 2 or
                 debaters=selected_debaters,
                 num_rounds=num_rounds
             )
-            
+
             # Store the debate state in session state
             st.session_state.debate_state = final_state
             st.session_state.debate_completed = True
-            
+
             progress_bar.progress(90)
             time.sleep(0.5)
-            
+
             # Complete
             status_text.text("Debate generation complete!")
             progress_bar.progress(100)
             time.sleep(1)
-            
+
             # Clear the progress indicators
             progress_bar.empty()
             status_text.empty()
-        
+
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
             st.error("Please make sure you've set up your Google API key correctly and that you have access to the Gemini API.")
@@ -187,56 +198,74 @@ if st.button(button_text, type="primary", disabled=len(selected_debaters) < 2 or
 if st.session_state.debate_state is not None:
     # Debate content (persistent)
     st.markdown(f"<h2 style='text-align: center;'>Debate on: {st.session_state.debate_state['topic']}</h2>", unsafe_allow_html=True)
-    
+
     # Display each round of the debate
     for round_num, exchange in enumerate(st.session_state.debate_state['history'], 1):
         if round_num > st.session_state.debate_state['max_rounds']:
             continue
-            
+
         st.markdown(f"<div class='round-header'><h3>Round {round_num}</h3></div>", unsafe_allow_html=True)
-        
+
         # Display each debater's argument in this round
         for debater in st.session_state.debate_state['debaters']:
             debater_class = debater.replace(" ", "-")
             if debater in exchange and exchange[debater]:
                 st.markdown(f"<div class='debater {debater_class}'><strong>{debater}:</strong> {exchange[debater]}</div>", unsafe_allow_html=True)
+
+                # Display sources if available
+                if 'sources' in st.session_state.debate_state and debater in st.session_state.debate_state['sources'] and round_num in st.session_state.debate_state['sources'][debater]:
+                    sources = st.session_state.debate_state['sources'][debater][round_num]
+                    if sources:
+                        with st.expander(f"View sources for {debater}'s argument"):
+                            for i, source in enumerate(sources):
+                                st.markdown(f"**Source {i+1}:** {source['source']}")
+                                st.markdown(f"**Content:** {source['content']}")
+                                st.markdown("---")
             else:
                 fallback = f"As {debater}, I believe this topic requires careful consideration."
                 st.markdown(f"<div class='debater {debater_class}'><strong>{debater}:</strong> {fallback}</div>", unsafe_allow_html=True)
-    
+
     # Display user follow-up questions and responses
     if st.session_state.debate_state['user_questions']:
         st.markdown(f"<div class='round-header'><h3>Follow-up Discussion</h3></div>", unsafe_allow_html=True)
-        
+
         for q_data in st.session_state.debate_state['user_questions']:
             # Display user question
             st.markdown(f"<div class='debater User'><strong>User:</strong> {q_data['question']}</div>", unsafe_allow_html=True)
-            
+
             # Display all debater responses
             for response_data in q_data['responses']:
                 responder = response_data['responder']
                 responder_class = responder.replace(" ", "-")
                 st.markdown(f"<div class='debater {responder_class}'><strong>{responder}:</strong> {response_data['response']}</div>", unsafe_allow_html=True)
 
+                # Display sources if available
+                if 'sources' in response_data and response_data['sources']:
+                    with st.expander(f"View sources for {responder}'s response"):
+                        for i, source in enumerate(response_data['sources']):
+                            st.markdown(f"**Source {i+1}:** {source['source']}")
+                            st.markdown(f"**Content:** {source['content']}")
+                            st.markdown("---")
+
 # Add follow-up question section if debate is completed (separate from debate content)
 if st.session_state.debate_completed and st.session_state.debate_state is not None:
     st.markdown("### Join the Conversation")
-    
+
     # Create a form for the follow-up question
     with st.form(key="follow_up_form"):
         # User question input
         question = st.text_area("Ask a follow-up question:")
-        
+
         # Select which debaters to respond
         responders = st.multiselect(
             "Select who should respond:",
             options=st.session_state.debate_state['debaters'],
             default=[st.session_state.debate_state['debaters'][0]]
         )
-        
+
         # Submit button
         submitted = st.form_submit_button("Submit Question")
-        
+
         if submitted:
             if question and responders:
                 # Store the values in session state
@@ -251,7 +280,7 @@ if st.session_state.debate_completed and st.session_state.debate_state is not No
 
 # Instructions for setting up API key
 with st.sidebar:
-       
+
     st.markdown("### How It Works")
     st.markdown("""
     1. Select 2-4 debaters to participate
@@ -259,10 +288,10 @@ with st.sidebar:
     3. Enter a debate topic
     4. Click "Start Debate" to generate the debate
     5. After the debate, ask follow-up questions to any debater
-    
+
     The app uses LangGraph to orchestrate the debate with separate nodes for each debater. Each debater has their own specialized node in the graph, allowing for independent reasoning and knowledge retrieval from their personalized knowledge bases.
-    
+
     The system retrieves relevant information from the Pinecone database for each debater, ensuring that their arguments are grounded in their actual statements, positions, and knowledge.
-    
+
     The human-in-the-loop feature lets you join the conversation after the initial debate concludes.
     """)
