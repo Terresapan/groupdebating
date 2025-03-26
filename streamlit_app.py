@@ -1,6 +1,7 @@
 import streamlit as st
 from main import GroupDebateQA
-from prompt import prompt_sam
+from prompt import prompt_sam, debater_prompts
+from back_end import DEBATERS
 
 # Set page configuration
 st.set_page_config(
@@ -12,6 +13,10 @@ st.set_page_config(
 # Initialize session state for chat history
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
+
+# Initialize session state for selected debater
+if "selected_debater" not in st.session_state:
+    st.session_state["selected_debater"] = "Sam Altman"
 
 # Add a title to the app
 st.title("Group Debate Chatbot")
@@ -41,7 +46,7 @@ user_query = st.chat_input("Ask a question about the group debates...")
 if user_query:
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": user_query})
-    
+
     # Display user message
     with st.chat_message("user"):
         st.markdown(user_query)
@@ -50,31 +55,44 @@ if user_query:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                # First get search results
+                # Get the selected debater
+                debater_name = st.session_state["selected_debater"]
+
+                # Get the namespace for the selected debater
+                namespace = DEBATERS[debater_name]["namespace"]
+
+                # First get search results from the appropriate namespace
                 k_value = st.session_state.get("k_value", 5)  # Get k value from session state
-                similar_docs = qa_engine.search_similar_documents(user_query, k=k_value)
-                
+                similar_docs = qa_engine.search_similar_documents(user_query, k=k_value, namespace=namespace)
+
+                # Get the appropriate prompt for the selected debater
+                system_prompt = debater_prompts.get(debater_name, prompt_sam)
+
                 # Use the custom context method for more reliable answers
                 response = qa_engine.ask_question_with_custom_context(
                     user_query, 
                     search_results=similar_docs, 
-                    system_prompt=prompt_sam
+                    system_prompt=system_prompt,
+                    debater_name=debater_name
                 )
-                
+
                 # Format answer with sources
                 answer = response["answer"]
                 sources = response["sources"].strip()
-                
+
                 if sources:
-                    formatted_response = f"{answer}\n\n**Sources:**\n{sources}"
+                    formatted_response = f"{answer}
+
+**Sources:**
+{sources}"
                 else:
                     formatted_response = answer
-                
+
                 st.markdown(formatted_response)
-                
+
                 # Add assistant message to chat history
                 st.session_state.messages.append({"role": "assistant", "content": formatted_response})
-                
+
                 # Show similar documents in an expander
                 with st.expander("View similar documents"):
                     for i, doc in enumerate(similar_docs):
@@ -82,7 +100,7 @@ if user_query:
                         st.markdown(f"**Content:** {doc.page_content}")
                         st.markdown(f"**Source:** {doc.metadata.get('source', 'Unknown')}")
                         st.markdown("---")
-            
+
             except Exception as e:
                 error_message = f"❌ Error generating response: {str(e)}"
                 st.error(error_message)
@@ -93,17 +111,34 @@ with st.sidebar:
     st.title("About")
     st.markdown("""
     This chatbot uses Pinecone vector database to retrieve relevant information about group debates.
-    
-    Ask questions like:
 
+    Select a debater and ask questions to get responses based on their knowledge and perspective.
     """)
-    
+
+    # Add debater selection
+    st.subheader("Select Debater")
+    debater_options = list(DEBATERS.keys())
+    selected_debater = st.selectbox(
+        "Choose a debater to answer your questions",
+        options=debater_options,
+        index=debater_options.index(st.session_state["selected_debater"]) if st.session_state["selected_debater"] in debater_options else 0
+    )
+
+    # Update session state when debater changes
+    if selected_debater != st.session_state["selected_debater"]:
+        st.session_state["selected_debater"] = selected_debater
+        st.rerun()
+
+    # Show description of selected debater
+    st.markdown(f"**{selected_debater}**")
+    st.caption(DEBATERS[selected_debater]["description"])
+
     # Add controls for search parameters
     st.subheader("Search Settings")
     # Store the k_value in session state so it persists between reruns
     if "k_value" not in st.session_state:
         st.session_state.k_value = 5
-    
+
     k_value = st.slider(
         "Number of documents to retrieve", 
         min_value=1, 
@@ -111,11 +146,11 @@ with st.sidebar:
         value=st.session_state.k_value,
         key="k_slider"
     )
-    
+
     # Update session state when slider changes
     if k_value != st.session_state.k_value:
         st.session_state.k_value = k_value
-    
+
     # Add reset button
     if st.button("Reset Conversation"):
         st.session_state.messages = []

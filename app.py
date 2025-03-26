@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 from back_end import DEBATERS, generate_debate, handle_follow_up_question
+from main import GroupDebateQA
 
 # Set page configuration (must be the first Streamlit command)
 st.set_page_config(
@@ -88,7 +89,7 @@ if selected_debaters:
     for i, debater in enumerate(selected_debaters):
         with cols[i]:
             st.markdown(f"**{debater}**")
-            st.caption(DEBATERS[debater])
+            st.caption(DEBATERS[debater]["description"])
 
 # Validate number of debaters
 if len(selected_debaters) < 2:
@@ -149,6 +150,10 @@ if st.button(button_text, type="primary", disabled=len(selected_debaters) < 2 or
             status_text.text("Initializing debate...")
             progress_bar.progress(10)
             time.sleep(0.5)
+            
+            # Initialize QA engine for knowledge retrieval
+            status_text.text("Retrieving knowledge from database...")
+            progress_bar.progress(30)
             
             # Create and run the real debate
             status_text.text("Generating debate content...")
@@ -255,7 +260,9 @@ with st.sidebar:
     4. Click "Start Debate" to generate the debate
     5. After the debate, ask follow-up questions to any debater
     
-    The app uses LangGraph to orchestrate the debate with separate nodes for each debater. Each debater has their own specialized node in the graph, allowing for independent reasoning and future extensions like personalized knowledge bases and web search capabilities.
+    The app uses LangGraph to orchestrate the debate with separate nodes for each debater. Each debater has their own specialized node in the graph, allowing for independent reasoning and knowledge retrieval from their personalized knowledge bases.
+    
+    The system retrieves relevant information from the Pinecone database for each debater, ensuring that their arguments are grounded in their actual statements, positions, and knowledge.
     
     The human-in-the-loop feature lets you join the conversation after the initial debate concludes.
     """)
