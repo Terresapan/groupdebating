@@ -1,6 +1,6 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, List, Dict, Literal, Annotated, Union
+from typing import TypedDict, List, Dict, Literal, Union
 import streamlit as st
 import os
 
@@ -105,7 +105,7 @@ def create_debater_node(debater_name):
         
         # Update the current speaker index
         state['current_speaker_idx'] = (state['current_speaker_idx'] + 1) % len(state['debaters'])
-        
+
         # If we've gone through all speakers for this round, increment the round
         if state['current_speaker_idx'] == 0:
             state['current_round'] += 1

@@ -1,12 +1,13 @@
 import os
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain_openai import OpenAIEmbeddings
 import streamlit as st
 from prompt import prompt_sam
 
 # Set API keys from Streamlit secrets
 os.environ["OPENAI_API_KEY"] = st.secrets["general"]["OPENAI_API_KEY"]
+os.environ["GOOGLE_API_KEY"] = st.secrets["general"]["GOOGLE_API_KEY"]
 os.environ["PINECONE_API_KEY"] = st.secrets["general"]["PINECONE_API_KEY"]
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["tracing"]["LANGCHAIN_API_KEY"]
@@ -14,8 +15,8 @@ os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_PROJECT"] = "Group Debating"
 
 class GroupDebateQA:
-    def __init__(self, model_name='text-embedding-3-small', llm_model='gpt-4o-mini',
-                 index_name="groupdebate-samaltman", namespace="groupdebate-samaltman"):
+    def __init__(self, model_name='models/text-embedding-004', llm_model='gemini-2.0-flash',
+                 index_name="groupdebate", namespace="elonmusk"):
         """
         Initialize the GroupDebateQA class with model parameters.
         
@@ -27,9 +28,8 @@ class GroupDebateQA:
         """
        
         # Initialize embedding model
-        self.embeddings = OpenAIEmbeddings(
-            model=model_name
-        )
+        # self.embeddings = OpenAIEmbeddings(model=model_name)
+        self.embeddings = GoogleGenerativeAIEmbeddings(model=model_name)
         
         # Initialize vector store
         self.vectorstore = PineconeVectorStore(
@@ -39,10 +39,8 @@ class GroupDebateQA:
         )
         
         # Initialize LLM
-        self.llm = ChatOpenAI(
-            model_name=llm_model,
-            temperature=0.0
-        )
+        # self.llm = ChatOpenAI(model_name=llm_model, temperature=0.0)
+        self.llm = ChatGoogleGenerativeAI(model=llm_model, temperature=0.0)
        
     def search_similar_documents(self, query, k=5):
         """

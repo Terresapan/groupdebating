@@ -95,9 +95,7 @@ with st.sidebar:
     This chatbot uses Pinecone vector database to retrieve relevant information about group debates.
     
     Ask questions like:
-    - What was discussed in the fireside chat at Harvard University?
-    - What are Sam Altman's views on AI safety?
-    - What were the key topics in recent debates?
+
     """)
     
     # Add controls for search parameters
