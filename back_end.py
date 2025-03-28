@@ -8,6 +8,7 @@ from prompt import debater_prompts
 
 # Set API keys from Streamlit secrets
 os.environ["GOOGLE_API_KEY"] = st.secrets["general"]["GOOGLE_API_KEY"]
+os.environ["PINECONE_API_KEY"] = st.secrets["general"]["PINECONE_API_KEY"]
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["tracing"]["LANGCHAIN_API_KEY"]
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"

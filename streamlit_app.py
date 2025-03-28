@@ -1,165 +1,355 @@
 import streamlit as st
-from main import GroupDebateQA
-from prompt import prompt_sam, debater_prompts
-from back_end import DEBATERS
+import os
+import time
+from back_end import DEBATERS, generate_debate, handle_follow_up_question
+from utils import check_password, save_feedback
 
-# Set page configuration
-st.set_page_config(
-    page_title="Group Debate Chatbot",
-    page_icon="💬",
-    layout="wide"
-)
+# Setup sidebar with instructions and feedback form
+def setup_sidebar():
+    """Setup the sidebar with instructions and feedback form."""
+    st.sidebar.header("🎭 Pantheon Discourse Engine")
+    st.sidebar.markdown(
+        "This app simulates a debate between tech leaders on a topic of your choice, "
+        "grounded in their actual statements and positions from a knowledge base."
+    )
 
-# Initialize session state for chat history
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+    st.sidebar.write("### Instructions")
+    st.sidebar.markdown(
+        "1. :key: Enter password to access the app  \n"
+        "2. :mag: Select 2-4 debaters to participate  \n"
+        "3. :pencil: Set the number of debate rounds (1-5)  \n"
+        "4. :round_pushpin: Enter a debate topic and start the debate  \n"
+        "5. :question: After the debate, ask follow-up questions to any debater"
+    )
 
-# Initialize session state for selected debater
-if "selected_debater" not in st.session_state:
-    st.session_state["selected_debater"] = "Sam Altman"
+    st.sidebar.write("### How It Works")
+    st.sidebar.markdown(
+        "1. The app uses LangGraph to orchestrate the debate with separate nodes for each debater.\n\n"
+        "2. The system retrieves relevant information from the Pinecone database for each debater, "
+        "ensuring that their arguments are grounded in their actual statements, positions, and knowledge.\n\n"
+        "3. The human-in-the-loop feature lets you join the conversation after the initial debate concludes."
+    )
 
-# Add a title to the app
-st.title("Group Debate Chatbot")
-st.subheader("Ask questions about the group debates")
+    st.sidebar.write("### 🎧 Listen to our Podcast for more insights")
+    st.sidebar.markdown(
+        "[AI Debate Simulator Podcast Link](https://open.spotify.com/episode/4ZMxA2xlKMbIOxcdb3SJEv)"
+    )
 
-# Initialize the QA engine
-@st.cache_resource
-def initialize_qa_engine():
-    return GroupDebateQA()
 
-try:
-    qa_engine = initialize_qa_engine()
-    st.success("✅ Successfully connected to Pinecone and OpenAI!")
-except Exception as e:
-    st.error(f"❌ Error initializing the QA engine: {str(e)}")
-    st.stop()
+    st.sidebar.write("### 🌎 Visit my AI Agent Projects Website")
+    st.sidebar.markdown(
+        "[Terresa Pan's Agent Garden Link](https://ai-agents-garden.lovable.app/)"
+    )
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # Feedback section
+    if 'feedback' not in st.session_state:
+        st.session_state.feedback = ""
 
-# Input for user query
-user_query = st.chat_input("Ask a question about the group debates...")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("💭 Feedback")
+    feedback = st.sidebar.text_area(
+        "Share your thoughts",
+        value=st.session_state.feedback,
+        placeholder="Your feedback helps us improve..."
+    )
 
-# Handle user input
-if user_query:
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": user_query})
-
-    # Display user message
-    with st.chat_message("user"):
-        st.markdown(user_query)
-
-    # Get response from QA engine
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+    if st.sidebar.button("📤 Submit Feedback"):
+        if feedback:
             try:
-                # Get the selected debater
-                debater_name = st.session_state["selected_debater"]
-
-                # Get the namespace for the selected debater
-                namespace = DEBATERS[debater_name]["namespace"]
-
-                # First get search results from the appropriate namespace
-                k_value = st.session_state.get("k_value", 5)  # Get k value from session state
-                similar_docs = qa_engine.search_similar_documents(user_query, k=k_value, namespace=namespace)
-
-                # Get the appropriate prompt for the selected debater
-                system_prompt = debater_prompts.get(debater_name, prompt_sam)
-
-                # Use the custom context method for more reliable answers
-                response = qa_engine.ask_question_with_custom_context(
-                    user_query, 
-                    search_results=similar_docs, 
-                    system_prompt=system_prompt,
-                    debater_name=debater_name
-                )
-
-                # Format answer with sources
-                answer = response["answer"]
-                sources = response["sources"].strip()
-
-                # Display the answer
-                st.markdown(answer)
-
-                # Display sources in a more structured way
-                if sources:
-                    with st.expander("View Sources"):
-                        source_list = sources.split(", ")
-                        for i, source in enumerate(source_list):
-                            st.markdown(f"**Source {i+1}:** {source}")
-
-                            # Find the corresponding document
-                            for doc in similar_docs:
-                                if doc.metadata.get('source', 'Unknown') == source:
-                                    st.markdown(f"**Content:** {doc.page_content}")
-                                    st.markdown("---")
-                                    break
-
-
-                # Add assistant message to chat history
-                st.session_state.messages.append({"role": "assistant", "content": formatted_response})
-
-                # Show similar documents in an expander
-                with st.expander("View similar documents"):
-                    for i, doc in enumerate(similar_docs):
-                        st.markdown(f"**Document {i+1}**")
-                        st.markdown(f"**Content:** {doc.page_content}")
-                        st.markdown(f"**Source:** {doc.metadata.get('source', 'Unknown')}")
-                        st.markdown("---")
-
+                save_feedback(feedback)
+                st.session_state.feedback = ""
+                st.sidebar.success("✨ Thank you for your feedback!")
             except Exception as e:
-                error_message = f"❌ Error generating response: {str(e)}"
-                st.error(error_message)
-                st.session_state.messages.append({"role": "assistant", "content": error_message})
+                st.sidebar.error(f"❌ Error saving feedback: {str(e)}")
+        else:
+            st.sidebar.warning("⚠️ Please enter feedback before submitting")
 
-# Add sidebar with information
-with st.sidebar:
-    st.title("About")
+    try:
+        st.sidebar.image("assets/bot01.jpg", use_container_width=True)
+    except:
+        pass
+
+def main():
+    """Main application function."""
+    # Set page configuration (must be the first Streamlit command)
+    st.set_page_config(
+        page_title="Pantheon Discourse Engine",
+        page_icon="🎭",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    # Initialize session state variables
+    if "debate_state" not in st.session_state:
+        st.session_state["debate_state"] = None
+    if "debate_completed" not in st.session_state:
+        st.session_state["debate_completed"] = False
+    if "follow_up_question" not in st.session_state:
+        st.session_state["follow_up_question"] = ""
+    if "selected_responders" not in st.session_state:
+        st.session_state["selected_responders"] = []
+    if "process_follow_up" not in st.session_state:
+        st.session_state["process_follow_up"] = False
+
+    setup_sidebar()
+
+    if not check_password():
+        st.stop()
+
+    # Custom CSS for styling
     st.markdown("""
-    This chatbot uses Pinecone vector database to retrieve relevant information about group debates.
+    <style>
+        .debate-container {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .debater {
+            border-left: 5px solid;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .Sam-Altman {
+            border-left-color: #0066cc;
+        }
+        .Elon-Musk {
+            border-left-color: #ff8c00;
+        }
+        .Mark-Zuckerberg {
+            border-left-color: #4CAF50;
+        }
+        .Demis-Hassabis {
+            border-left-color: #9C27B0;
+        }
+        .round-header {
+            background-color: #343a40;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .main-title {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .source-expander {
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            border-left: 3px solid #9C27B0;
+        }
+        .source-content {
+            font-size: 0.9em;
+            color: #555;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
-    Select a debater and ask questions to get responses based on their knowledge and perspective.
+    # App title and description
+    st.markdown("<h1 class='main-title'>🎭 AI Debate Simulator</h1>", unsafe_allow_html=True)
+    st.markdown("""
+    This app simulates a debate between selected tech leaders on a topic of your choice.
+    Select 2-4 debaters, set the number of rounds, and enter a debate topic to get started.
     """)
 
-    # Add debater selection
-    st.subheader("Select Debater")
-    debater_options = list(DEBATERS.keys())
-    selected_debater = st.selectbox(
-        "Choose a debater to answer your questions",
-        options=debater_options,
-        index=debater_options.index(st.session_state["selected_debater"]) if st.session_state["selected_debater"] in debater_options else 0
+    # UI for selecting debaters
+    st.subheader("Select Debaters (2-4)")
+    selected_debaters = st.multiselect(
+        "Choose 2-4 debaters to participate",
+        options=list(DEBATERS.keys()),
+        default=list(DEBATERS.keys())[:2],
+        help="Select between 2 and 4 debaters to participate in the debate"
     )
 
-    # Update session state when debater changes
-    if selected_debater != st.session_state["selected_debater"]:
-        st.session_state["selected_debater"] = selected_debater
-        st.rerun()
+    # Show descriptions of selected debaters
+    if selected_debaters:
+        st.write("Selected Debaters:")
+        cols = st.columns(len(selected_debaters))
+        for i, debater in enumerate(selected_debaters):
+            with cols[i]:
+                st.markdown(f"**{debater}**")
+                st.caption(DEBATERS[debater]["description"])
 
-    # Show description of selected debater
-    st.markdown(f"**{selected_debater}**")
-    st.caption(DEBATERS[selected_debater]["description"])
+    # Validate number of debaters
+    if len(selected_debaters) < 2:
+        st.warning("Please select at least 2 debaters.")
+    elif len(selected_debaters) > 4:
+        st.warning("Please select no more than 4 debaters.")
 
-    # Add controls for search parameters
-    st.subheader("Search Settings")
-    # Store the k_value in session state so it persists between reruns
-    if "k_value" not in st.session_state:
-        st.session_state.k_value = 5
+    # Number of rounds
+    num_rounds = st.slider("Number of debate rounds", min_value=1, max_value=5, value=3)
 
-    k_value = st.slider(
-        "Number of documents to retrieve", 
-        min_value=1, 
-        max_value=10, 
-        value=st.session_state.k_value,
-        key="k_slider"
-    )
+    # Debate topic
+    debate_topic = st.text_input("Enter debate topic", "The future of artificial intelligence")
 
-    # Update session state when slider changes
-    if k_value != st.session_state.k_value:
-        st.session_state.k_value = k_value
+    # Create a placeholder for the debate content
+    debate_placeholder = st.empty()
 
-    # Add reset button
-    if st.button("Reset Conversation"):
-        st.session_state.messages = []
-        st.rerun()
+    # Determine button text based on state
+    button_text = "Start New Debate" if st.session_state["debate_state"] is not None else "Start Debate"
+
+    # Process follow-up if flag is set
+    if st.session_state["process_follow_up"]:
+        with st.spinner("Processing follow-up question..."):
+            # Get the question and responders from session state
+            question = st.session_state["follow_up_question"]
+            responders = st.session_state["selected_responders"]
+
+            if question and responders:
+                # Update the debate state with the user's question and the responses
+                st.session_state["debate_state"] = handle_follow_up_question(
+                    st.session_state["debate_state"],
+                    question,
+                    responders
+                )
+
+                # Clear the inputs after processing
+                st.session_state["follow_up_question"] = ""
+                st.session_state["selected_responders"] = []
+
+            # Reset the processing flag
+            st.session_state["process_follow_up"] = False
+
+    # Run the debate when the user clicks the button
+    if st.button(button_text, type="primary", disabled=len(selected_debaters) < 2 or len(selected_debaters) > 4, key="main_debate_button"):
+        if st.session_state["debate_state"] is not None:
+            # Reset the debate if we already have one
+            st.session_state["debate_state"] = None
+            st.session_state["debate_completed"] = False
+            st.session_state["follow_up_question"] = ""
+            st.session_state["selected_responders"] = []
+            st.session_state["process_follow_up"] = False
+            st.rerun()
+        else:
+            # Show a progress bar for better UX
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            try:
+                status_text.text("Initializing debate...")
+                progress_bar.progress(10)
+                time.sleep(0.5)
+
+                # Initialize QA engine for knowledge retrieval
+                status_text.text("Retrieving knowledge from database...")
+                progress_bar.progress(30)
+
+                # Create and run the real debate
+                status_text.text("Generating debate content...")
+                final_state = generate_debate(
+                    topic=debate_topic,
+                    debaters=selected_debaters,
+                    num_rounds=num_rounds
+                )
+
+                # Store the debate state in session state
+                st.session_state["debate_state"] = final_state
+                st.session_state["debate_completed"] = True
+
+                progress_bar.progress(90)
+                time.sleep(0.5)
+
+                # Complete
+                status_text.text("Debate generation complete!")
+                progress_bar.progress(100)
+                time.sleep(1)
+
+                # Clear the progress indicators
+                progress_bar.empty()
+                status_text.empty()
+
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
+                st.error("Please make sure you've set up your Google API key correctly and that you have access to the Gemini API.")
+
+    # Display the debate if it exists
+    if st.session_state["debate_state"] is not None:
+        # Debate content (persistent)
+        st.markdown(f"<h2 style='text-align: center;'>Debate on: {st.session_state['debate_state']['topic']}</h2>", unsafe_allow_html=True)
+
+        # Display each round of the debate
+        for round_num, exchange in enumerate(st.session_state["debate_state"]["history"], 1):
+            if round_num > st.session_state["debate_state"]["max_rounds"]:
+                continue
+
+            st.markdown(f"<div class='round-header'><h3>Round {round_num}</h3></div>", unsafe_allow_html=True)
+
+            # Display each debater's argument in this round
+            for debater in st.session_state["debate_state"]["debaters"]:
+                debater_class = debater.replace(" ", "-")
+                if debater in exchange and exchange[debater]:
+                    st.markdown(f"<div class='debater {debater_class}'><strong>{debater}:</strong> {exchange[debater]}</div>", unsafe_allow_html=True)
+
+                    # Display sources if available
+                    if 'sources' in st.session_state["debate_state"] and debater in st.session_state["debate_state"]["sources"] and round_num in st.session_state["debate_state"]["sources"][debater]:
+                        sources = st.session_state["debate_state"]["sources"][debater][round_num]
+                        if sources:
+                            with st.expander(f"View sources for {debater}'s argument"):
+                                for i, source in enumerate(sources):
+                                    st.markdown(f"**Source {i+1}:** {source['source']}")
+                                    st.markdown(f"**Content:** {source['content']}")
+                                    st.markdown("---")
+                else:
+                    fallback = f"As {debater}, I believe this topic requires careful consideration."
+                    st.markdown(f"<div class='debater {debater_class}'><strong>{debater}:</strong> {fallback}</div>", unsafe_allow_html=True)
+
+        # Display user follow-up questions and responses
+        if st.session_state["debate_state"]["user_questions"]:
+            st.markdown(f"<div class='round-header'><h3>Follow-up Discussion</h3></div>", unsafe_allow_html=True)
+
+            for q_data in st.session_state["debate_state"]["user_questions"]:
+                # Display user question
+                st.markdown(f"<div class='debater User'><strong>User:</strong> {q_data['question']}</div>", unsafe_allow_html=True)
+
+                # Display all debater responses
+                for response_data in q_data['responses']:
+                    responder = response_data['responder']
+                    responder_class = responder.replace(" ", "-")
+                    st.markdown(f"<div class='debater {responder_class}'><strong>{responder}:</strong> {response_data['response']}</div>", unsafe_allow_html=True)
+
+                    # Display sources if available
+                    if 'sources' in response_data and response_data['sources']:
+                        with st.expander(f"View sources for {responder}'s response"):
+                            for i, source in enumerate(response_data['sources']):
+                                st.markdown(f"**Source {i+1}:** {source['source']}")
+                                st.markdown(f"**Content:** {source['content']}")
+                                st.markdown("---")
+
+    # Add follow-up question section if debate is completed (separate from debate content)
+    if st.session_state["debate_completed"] and st.session_state["debate_state"] is not None:
+        st.markdown("### Join the Conversation")
+
+        # Create a form for the follow-up question
+        with st.form(key="follow_up_form"):
+            # User question input
+            question = st.text_area("Ask a follow-up question:")
+
+            # Select which debaters to respond
+            responders = st.multiselect(
+                "Select who should respond:",
+                options=st.session_state["debate_state"]["debaters"],
+                default=[st.session_state["debate_state"]["debaters"][0]]
+            )
+
+            # Submit button
+            submitted = st.form_submit_button("Submit Question")
+
+            if submitted:
+                if question and responders:
+                    # Store the values in session state
+                    st.session_state["follow_up_question"] = question
+                    st.session_state["selected_responders"] = responders
+                    st.session_state["process_follow_up"] = True
+                    st.rerun()
+                elif not question:
+                    st.warning("Please enter a question before submitting.")
+                else:
+                    st.warning("Please select at least one debater to respond.")
+
+if __name__ == "__main__":
+    main()
