@@ -38,7 +38,7 @@ def setup_sidebar():
 
     st.sidebar.write("### 🌎 Visit my AI Agent Projects Website")
     st.sidebar.markdown(
-        "[Terresa Pan's Agent Garden Link](https://ai-agents-garden.lovable.app/)"
+        "[Terresa Pan's Agent Garden Link](https://agentgarden.lovable.app/)"
     )
 
     # Feedback section
